@@ -1,0 +1,126 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Potato Chess • P2P</title><style>
+*{box-sizing:border-box}body{margin:0;background:#151a17;color:#eef2e9;font:16px system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:24px}header{display:flex;justify-content:space-between;align-items:center}h1{margin:0;font-size:30px}small,.muted{color:#adb9ac}header p{margin:8px 0 24px}.layout{display:grid;grid-template-columns:minmax(280px,560px) 1fr;gap:24px}.board{display:grid;grid-template-columns:repeat(8,1fr);aspect-ratio:1;border:5px solid #303d32;border-radius:7px;overflow:hidden}.sq{position:relative;border:0;border-radius:0;padding:0;min-width:0;font:clamp(25px,6vw,53px) Georgia,'DejaVu Sans',serif;cursor:pointer;display:grid;place-items:center;background:#dfdfc5;color:#111}.sq.dark{background:#7d9776}.sq.white{color:#fff;text-shadow:0 1px 2px #000,1px 0 #000,-1px 0 #000}.sq.sel{background:#e4bf57}.sq.last{box-shadow:inset 0 0 0 4px #d8bb62}.sq.target:after{content:'';position:absolute;width:22%;height:22%;border-radius:50%;background:#173b4180}.sq span{position:absolute;bottom:2px;left:3px;font:10px system-ui;color:#213324;text-shadow:none}.panel{background:#202923;border:1px solid #354336;padding:20px;border-radius:12px;margin-bottom:16px}h2{font-size:18px;margin:0 0 12px}button,select{font:inherit;background:#c7dc9a;color:#172314;border:0;border-radius:6px;padding:10px 13px;cursor:pointer}button.secondary{background:#354338;color:#e6eddf}button:disabled{opacity:.45;cursor:default}textarea{width:100%;height:76px;margin:8px 0;background:#151c17;color:#dce8d4;border:1px solid #52634f;border-radius:5px;padding:8px;resize:vertical;font:12px monospace}label{display:block;font-size:13px;margin-top:12px}.row{display:flex;gap:8px;flex-wrap:wrap}#status{margin:16px 0;font-weight:600}#net{font-size:13px;line-height:1.5;color:#c7dc9a}ol{padding-left:20px;font-size:14px;line-height:1.6}#moves{max-height:130px;overflow:auto;font:13px monospace;line-height:1.8;word-spacing:8px}details{font-size:13px;line-height:1.6}dialog{background:#202923;color:white;border:1px solid #c7dc9a;border-radius:12px}dialog::backdrop{background:#0009}@media(max-width:720px){main{padding:14px}.layout{grid-template-columns:1fr}.sq{font-size:9vw}}
+</style><main><header><div><h1>♟ Potato Chess</h1><p class="muted">chess.js rules. Lightweight board. Just two browsers.</p></div><small>P2P / no backend</small></header><div class="layout"><section><div id="board" class="board" aria-label="Chess board"></div><div id="status" role="status"></div><div class="row"><button id="flip" class="secondary">Flip board</button><button id="local" class="secondary">Local two-player</button><button id="reset" class="secondary">New local game</button></div><div class="panel" style="margin-top:20px"><h2>Moves</h2><div id="moves">Your opening move awaits.</div></div></section><aside><div class="panel"><h2>Play a friend</h2><div id="net" role="status">Local board ready. Connect to play remotely.</div><ol><li>White creates and sends an invite link.</li><li>Black pastes it here and clicks Import link, then sends the generated reply link.</li><li>White imports the reply in the original tab.</li></ol><label><input type="checkbox" id="stun" checked> Use public STUN (internet play)</label><p class="muted" style="font-size:12px">Uncheck for LAN-only discovery with no configured servers. Connection links contain network addresses; share only with your opponent.</p><button id="host">Create invite link · White</button><label for="incoming">Paste your friend's invite or reply link</label><textarea id="incoming" spellcheck="false" placeholder="potato-chess.html#pc=…"></textarea><button id="importLink" class="secondary">Import link</button><label for="outgoing" id="outgoingLabel">Your link — send the entire text</label><textarea id="outgoing" readonly spellcheck="false"></textarea><button id="copy" class="secondary">Copy link</button><p class="muted" style="font-size:13px">Opening a local file? Paste links here, not into the address bar. A portable link cannot find the HTML on your friend's computer automatically. Keep your original tab open: refreshing loses the live connection.</p></div><div class="panel"><h2>Powered by chess.js</h2><details open><summary>How it works</summary><p><a href="https://github.com/jhlywa/chess.js" target="_blank" rel="noopener" style="color:#c7dc9a">chess.js</a> is open source (BSD-2-Clause). It provides the rules, not a GUI. This file keeps a small custom HTML/CSS board.</p><p>One HTML file, with chess.js 1.4.0 loaded from jsDelivr. Internet is required to load the rules library. No accounts, UI frameworks, animation loop, signaling server, or game server. Both players must open this updated HTML in a modern browser and keep it open.</p><p>Moves travel over an encrypted WebRTC data channel. STUN only helps discover a route; there is no TURN relay. Some firewalls or NATs block direct connections. Try the same Wi-Fi or another network.</p><p>Includes castling, en passant, promotion, checkmate, stalemate, automatic threefold/50-move draws and insufficient-material draws, all handled by chess.js. No clocks, reconnect, or saved games. A new connection starts a new game.</p></details></div></aside></div></main><dialog id="promotion"><p>Promote your pawn</p><div class="row"><button data-p="q">Queen</button><button data-p="r">Rook</button><button data-p="b">Bishop</button><button data-p="n">Knight</button></div></dialog><script type="module">
+'use strict';
+// Pin the rules engine so both peers run the same version. No signaling service.
+const controls = ['host','importLink','local','reset','flip'];
+controls.forEach(id => document.getElementById(id).disabled = true);
+document.getElementById('status').textContent = 'Loading chess.js…';
+let Chess;
+try {
+  ({ Chess } = await import('https://cdn.jsdelivr.net/npm/chess.js@1.4.0/dist/esm/chess.js'));
+} catch (error) {
+  document.getElementById('status').textContent = 'Could not load chess.js. Connect to the internet and reload this file.';
+  document.getElementById('net').textContent = 'The rules library could not be downloaded from the CDN.';
+  throw error;
+}
+controls.forEach(id => document.getElementById(id).disabled = false);
+const $=id=>document.getElementById(id), glyph={k:'♚',q:'♛',r:'♜',b:'♝',n:'♞',p:'♟'};
+// chess.js owns all rule validation, history, and draw detection.
+const game = new Chess();
+const color=p=>p?(p===p.toUpperCase()?'w':'b'):null;
+const name=i=>'abcdefgh'[i%8]+(8-Math.floor(i/8));
+const index=square=>(8-Number(square[1]))*8+'abcdefgh'.indexOf(square[0]);
+function snapshot(){return {b:game.board().flat().map(p=>p?(p.color==='w'?p.type.toUpperCase():p.type):''),turn:game.turn()}}
+function initial(){game.reset();return snapshot()}
+function legal(){return game.moves({verbose:true}).map(m=>({f:index(m.from),t:index(m.to),p:m.promotion,san:m.san}))}
+function check(){return game.isCheck()}
+let state=initial(),selected=-1,flipped=false,last=null,history=[],pc=null,dc=null,role=null,online=false,busy=false,ended='',sessionId=null;
+function fresh(){state=initial();selected=-1;last=null;history=[];ended='';render()}
+function ending(){
+  if(game.isCheckmate())return `${game.turn()==='w'?'Black':'White'} wins by checkmate.`;
+  if(game.isStalemate())return 'Draw by stalemate.';
+  if(game.isThreefoldRepetition())return 'Draw by repetition.';
+  if(game.isDrawByFiftyMoves())return 'Draw by 50-move rule.';
+  if(game.isInsufficientMaterial())return 'Draw by insufficient material.';
+  return game.isDraw()?'Draw.':'';
+}
+function render(){let moves=legal(state);ended=ending(moves);$('board').replaceChildren();for(let j=0;j<64;j++){let i=flipped?63-j:j,p=state.b[i],el=document.createElement('button');el.className='sq'+((i%8+Math.floor(i/8))%2?' dark':'')+(color(p)==='w'?' white':'')+(i===selected?' sel':'')+(last&&(i===last.f||i===last.t)?' last':'')+(selected>=0&&moves.some(m=>m.f===selected&&m.t===i)?' target':'');el.textContent=p?glyph[p.toLowerCase()]:'';el.setAttribute('aria-label',name(i)+(p?' '+(color(p)==='w'?'white ':'black ')+({k:'king',q:'queen',r:'rook',b:'bishop',n:'knight',p:'pawn'}[p.toLowerCase()]):' empty'));let label=document.createElement('span');label.textContent=name(i);el.append(label);el.onclick=()=>click(i);$('board').append(el)}$('status').textContent=ended||`${state.turn==='w'?'White':'Black'} to move${check(state,state.turn)?' — check!':''}${role?' · You are '+(role==='w'?'White':'Black'):''}`;$('moves').textContent=history.length?history.map((m,i)=>(i%2===0?(i/2+1)+'. ':'')+m).join(' '):'Your opening move awaits.';$('reset').disabled=!!role}
+async function click(i){if(busy||ended||role&&(!online||state.turn!==role))return;let candidates=legal(state).filter(m=>m.f===selected&&m.t===i);if(candidates.length){let m=candidates[0];if(m.p){busy=true;let p=await new Promise(resolve=>{let dlg=$('promotion');dlg.oncancel=e=>e.preventDefault();dlg.querySelectorAll('button').forEach(b=>b.onclick=()=>{dlg.close();resolve(b.dataset.p)});dlg.showModal()});busy=false;m=candidates.find(m=>m.p===p)}if(role){if(!online||dc?.readyState!=='open')return;try{dc.send(JSON.stringify({type:'move',ply:history.length,before:game.fen(),f:m.f,t:m.t,p:m.p||null}))}catch(e){notice('Connection lost. Start a new connection.');online=false;return}}commit(m)}else{selected=color(state.b[i])===state.turn?i:-1;render()}}
+function commit(m){
+  const played=game.move({from:name(m.f),to:name(m.t),...(m.p?{promotion:m.p}:{})});
+  history.push(played.san);state=snapshot();last=m;selected=-1;render();
+}
+function notice(t){$('net').textContent=t}
+function disconnect(){online=false;if(dc){dc.onclose=null;dc.close()}if(pc){pc.onconnectionstatechange=null;pc.close()}pc=dc=null;role=null;sessionId=null;$('outgoing').value=''}
+function setup(c){disconnect();role=c;flipped=c==='b';fresh();if(!window.RTCPeerConnection)throw Error('WebRTC is unavailable in this browser.');pc=new RTCPeerConnection({iceServers:$('stun').checked?[{urls:'stun:stun.l.google.com:19302'}]:[]});let peer=pc;peer.onconnectionstatechange=()=>{if(pc!==peer)return;if(['failed','disconnected','closed'].includes(peer.connectionState)){online=false;notice('Connection interrupted. Create a new invite to restart.');render()}};peer.ondatachannel=e=>wire(e.channel);return peer}
+function wire(channel){dc=channel;channel.onopen=()=>{online=true;notice('Connected directly · You play '+(role==='w'?'White':'Black'));render()};channel.onclose=()=>{online=false;notice('Peer disconnected. New connection required.');render()};channel.onmessage=e=>{try{if(typeof e.data!=='string'||e.data.length>1000)throw Error();let d=JSON.parse(e.data);if(d.type!=='move'||ended||state.turn===role||d.ply!==history.length||d.before!==game.fen())throw Error();let m=legal(state).find(m=>m.f===d.f&&m.t===d.t&&(m.p||null)===d.p);if(!m)throw Error();commit(m)}catch{online=false;channel.close();notice('Invalid or out-of-sync move. Connection closed.')}}}
+function gather(peer){return new Promise((resolve,reject)=>{if(peer.iceGatheringState==='complete')return resolve();let timer=setTimeout(()=>{peer.removeEventListener('icegatheringstatechange',fn);reject(Error('Connection discovery timed out. Try again or disable STUN for LAN.'))},20000);function fn(){if(peer.iceGatheringState==='complete'){clearTimeout(timer);peer.removeEventListener('icegatheringstatechange',fn);resolve()}}peer.addEventListener('icegatheringstatechange',fn)})}
+// Local links use a relative filename, never a sender's private filesystem path.
+// A static HTTP(S) copy can also use the page URL; signaling stays in the fragment.
+function encode(d){
+  const payload={v:3,engine:'chess.js@1.4.0',session:sessionId,type:d.type,sdp:d.sdp};
+  const bytes=new TextEncoder().encode(JSON.stringify(payload));
+  let binary='';for(const byte of bytes)binary+=String.fromCharCode(byte);
+  const token=btoa(binary).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+  const base=/^https?:$/.test(location.protocol)?location.origin+location.pathname:'potato-chess.html';
+  return base+'#pc='+token;
+}
+function decode(raw=$('incoming').value){
+  raw=raw.trim();
+  if(raw.length>100000)throw Error('Link is too large. Paste only the full game link.');
+  let d;
+  try{
+    const hash=raw.indexOf('#');if(hash<0)throw Error();
+    const token=new URLSearchParams(raw.slice(hash+1)).get('pc');
+    if(!token||!/^[A-Za-z0-9_-]+$/.test(token))throw Error();
+    const base64=token.replace(/-/g,'+').replace(/_/g,'/');
+    const binary=atob(base64+'='.repeat((4-base64.length%4)%4));
+    d=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(Uint8Array.from(binary,c=>c.charCodeAt(0))));
+  }catch{throw Error('Invalid or incomplete link. Copy the entire invite or reply link.');}
+  if(!d||d.v!==3||d.engine!=='chess.js@1.4.0'||!['offer','answer'].includes(d.type)||typeof d.sdp!=='string'||!d.sdp.startsWith('v=0')||typeof d.session!=='string'||!/^[a-f0-9]{32}$/.test(d.session))throw Error('Unsupported link. Both players must use this updated HTML.');
+  return d;
+}
+function newSession(){return Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('')}
+function mayRestart(){return !role||confirm('This will end the current connection and start a new game. Continue?')}
+async function action(fn){
+  if(busy)return;busy=true;
+  for(const id of ['host','importLink','local','reset'])$(id).disabled=true;
+  try{await fn()}catch(e){notice(e.message||'Could not connect.');}
+  finally{busy=false;for(const id of ['host','importLink','local'])$(id).disabled=false;$('reset').disabled=!!role;}
+}
+$('host').onclick=()=>action(async()=>{
+  if(!mayRestart())return;
+  const peer=setup('w');sessionId=newSession();
+  $('outgoingLabel').textContent='Your invite link — send to Black';
+  wire(peer.createDataChannel('chess'));notice('Gathering connection routes…');
+  await peer.setLocalDescription(await peer.createOffer());await gather(peer);
+  $('outgoing').value=encode(peer.localDescription);
+  notice('Copy and send your invite link. Keep this tab open, then import Black’s reply here.');
+});
+async function importLink(){
+  const d=decode();
+  if(d.type==='offer'){
+    if(!mayRestart())return;
+    const peer=setup('b');sessionId=d.session;
+    $('outgoingLabel').textContent='Your reply link — send back to White';
+    notice('Preparing your reply link…');
+    await peer.setRemoteDescription({type:d.type,sdp:d.sdp});
+    await peer.setLocalDescription(await peer.createAnswer());await gather(peer);
+    $('outgoing').value=encode(peer.localDescription);$('incoming').value='';
+    notice('Copy this reply link and send it to White. Keep this tab open while White imports it.');
+  }else{
+    if(!pc||role!=='w'||pc.signalingState!=='have-local-offer')throw Error('Import the reply in White’s original invite tab. If that tab was refreshed or closed, create a new invite.');
+    if(d.session!==sessionId)throw Error('This reply belongs to a different invite. Ask Black to import your current invite and send its reply.');
+    await pc.setRemoteDescription({type:d.type,sdp:d.sdp});$('incoming').value='';
+    notice('Connecting… If it fails, try another network or the same Wi-Fi.');
+  }
+}
+$('importLink').onclick=()=>action(importLink);
+$('copy').onclick=async()=>{
+  if(!$('outgoing').value){notice('Create an invite or import a friend’s invite first.');return;}
+  try{await navigator.clipboard.writeText($('outgoing').value);notice('Link copied. Send the full link to your friend; they should paste it into Import link.');}
+  catch{$('outgoing').focus();$('outgoing').select();notice('Link selected. Press Ctrl+C (Cmd+C on Mac), or use Copy in the selection menu.');}
+};
+// Opening a hosted invite or changing only the fragment preserves the current tab.
+// Never navigate automatically to a link supplied by a peer.
+function readAddressLink(){
+  if(!location.hash.startsWith('#pc='))return;
+  $('incoming').value=location.hash;
+  try{window.history.replaceState(null,'',location.pathname+location.search);}catch{}
+  notice('Link loaded. Click Import link to join or finish connecting.');
+}
+window.addEventListener('hashchange',readAddressLink);
+readAddressLink();
+$('flip').onclick=()=>{flipped=!flipped;render()};$('local').onclick=()=>{if(role&&!confirm('Disconnect and start a local game?'))return;disconnect();fresh();notice('Local two-player mode. Share this keyboard.')};$('reset').onclick=()=>{if(!role&&confirm('Start a new local game?'))fresh()};fresh();
+</script></html>
